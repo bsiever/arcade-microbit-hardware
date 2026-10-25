@@ -34,8 +34,24 @@
 #include "LevelDetector.h"
 #include "LevelDetectorSPL.h"
 #include "TouchButton.h"
-#include "NRF52LedMatrix.h"
+#include "MicroBitDisplay.h"
 #include <math.h>
+
+// Implemented in microbit-log.cpp. That file can't include pxt.h: pxt's pin-name macros
+// (P0_0 ...) clash with the micro:bit headers the data-logging classes need.
+namespace mbhwlog {
+codal::NRF52I2C *createInternalI2C(codal::NRF52Pin &sda, codal::NRF52Pin &scl);
+void init(codal::NRF52I2C &i2c, codal::NRFLowLevelTimer &timer, codal::NRF52Pin &tx,
+          codal::NRF52Pin &rx);
+int beginRow();
+int logData(const char *key, int keyLen, const char *value, int valueLen);
+int endRow();
+void clear(bool fullErase);
+void setTimeStamp(int format);
+void setSerialMirroring(bool on);
+bool isFull();
+int eventSource();
+} // namespace mbhwlog
 #endif
 
 // Event-bus ids for components created here. Chosen to avoid the ids used by the Arcade
@@ -127,20 +143,25 @@ static DevicePin *userPin(int p) {
 // Shared resources: ADC, touch sensor, internal I2C
 // ---------------------------------------------------------------------------------------------
 static NRF52ADC *adc;
-static NRF52TouchSensor *touchSensor;
+static NRFLowLevelTimer *adcTimer; // NULL if someone else created the ADC
+static TouchSensor *touchSensor;
 
 // The ADC is shared by analog pins and the microphone. Creating it also fixes the core
 // `pins.analogRead` blocks, because NRF52Pin::adc is static and was NULL in Arcade.
 static NRF52ADC *ensureADC() {
+    if (!adc && NRF52Pin::adc) // already created by the runtime or another extension
+        adc = NRF52Pin::adc;
     if (!adc) {
-        auto t = (NRFLowLevelTimer *)pxt::allocateTimer();
-        adc = new NRF52ADC(*t, 91); // same sample period as MicroBit.cpp
+        adcTimer = (NRFLowLevelTimer *)pxt::allocateTimer();
+        adc = new NRF52ADC(*adcTimer, 91); // same sample period as MicroBit.cpp
         NRF52Pin::adc = adc;
     }
     return adc;
 }
 
 static void ensureTouchSensor() {
+    if (!touchSensor && NRF52Pin::touchSensor)
+        touchSensor = NRF52Pin::touchSensor;
     if (!touchSensor) {
         auto t = (NRFLowLevelTimer *)pxt::allocateTimer();
         touchSensor = new NRF52TouchSensor(*t);
@@ -148,12 +169,13 @@ static void ensureTouchSensor() {
     }
 }
 
-static codal::I2C *internalI2C() {
-    static codal::I2C *i2c;
+// The internal I2C bus (motion sensor + USB interface chip). It is created as a MicroBitI2C
+// (a thin NRF52I2C subclass) because the data-logging classes require that type.
+static NRF52I2C *internalI2C() {
+    static NRF52I2C *i2c;
     if (!i2c) {
-        i2c = pxt::getI2C(pxt::getPin(MB_PIN_INT_SDA), pxt::getPin(MB_PIN_INT_SCL));
-        if (i2c)
-            i2c->setFrequency(400000);
+        i2c = mbhwlog::createInternalI2C(*pxt::getPin(MB_PIN_INT_SDA), *pxt::getPin(MB_PIN_INT_SCL));
+        i2c->setFrequency(400000);
     }
     return i2c;
 }
@@ -165,6 +187,56 @@ static bool motionProbed;
 static LSM303Accelerometer *acc;
 static LSM303Magnetometer *mag;
 
+// Shared by the accelerometer and the magnetometer. The micro:bit default is
+// (SIMPLE_CARTESIAN, upside down, not rotated); setOrientation() changes it at run time so that
+// x/y/z, pitch/roll, gestures and the compass heading are relative to the Arcade screen.
+static CoordinateSpace motionSpace(SIMPLE_CARTESIAN, true, COORDINATE_SPACE_ROTATED_0);
+
+// How the micro:bit sits in the shield, as seen by the player looking at the screen.
+// logo: 0 = logo points up, 1 = right, 2 = down, 3 = left.  away: LEDs face away from the player.
+static int orientLogo = 0;
+static bool orientAway = false;
+
+// Maps a vector from micro:bit board axes to screen axes. In CODAL's SIMPLE_CARTESIAN frame
+// +x points to the board's left edge, +y to the logo and +z into the board (right-handed).
+static Sample3D boardToScreen(Sample3D v) {
+    if (orientAway) { // turned 180 degrees about the vertical axis
+        v.x = -v.x;
+        v.z = -v.z;
+    }
+    for (int i = 0; i < orientLogo; i++) { // quarter turn clockwise, as seen by the player
+        int t = v.x;
+        v.x = -v.y;
+        v.y = t;
+    }
+    return v;
+}
+
+static bool sameSample(const Sample3D &a, const Sample3D &b) {
+    return a.x == b.x && a.y == b.y && a.z == b.z;
+}
+
+// CODAL's CoordinateSpace can express every orientation as (upside down?, rotation), so find the
+// pair that equals "micro:bit default, then board-to-screen".
+static void applyOrientation() {
+    CoordinateSpace def(SIMPLE_CARTESIAN, true, COORDINATE_SPACE_ROTATED_0);
+    Sample3D basis[3] = {Sample3D(1000, 0, 0), Sample3D(0, 1000, 0), Sample3D(0, 0, 1000)};
+    for (int u = 0; u < 2; u++) {
+        for (int r = COORDINATE_SPACE_ROTATED_0; r <= COORDINATE_SPACE_ROTATED_270; r++) {
+            CoordinateSpace cand(SIMPLE_CARTESIAN, u == 1, r);
+            bool ok = true;
+            for (int i = 0; i < 3 && ok; i++)
+                ok = sameSample(cand.transform(basis[i]), boardToScreen(def.transform(basis[i])));
+            if (ok) {
+                motionSpace.upsidedown = (u == 1);
+                motionSpace.rotated = r;
+                return;
+            }
+        }
+    }
+    DMESG("mbhw: orientation not representable");
+}
+
 static void probeMotion() {
     if (motionProbed)
         return;
@@ -175,15 +247,14 @@ static void probeMotion() {
         return;
 
     // Same configuration as MicroBitAccelerometer::autoDetect().
-    static CoordinateSpace space(SIMPLE_CARTESIAN, true, COORDINATE_SPACE_ROTATED_0);
     auto irq = pxt::getPin(MB_PIN_MOTION_IRQ);
     irq->getDigitalValue();
     irq->setPull(PullMode::Up);
     irq->setActiveLo();
 
     if (LSM303Accelerometer::isDetected(*i2c, LSM303_A_DEFAULT_ADDR)) {
-        acc = new LSM303Accelerometer(*i2c, *irq, space, LSM303_A_DEFAULT_ADDR);
-        mag = new LSM303Magnetometer(*i2c, *irq, space, LSM303_M_DEFAULT_ADDR);
+        acc = new LSM303Accelerometer(*i2c, *irq, motionSpace, LSM303_A_DEFAULT_ADDR);
+        mag = new LSM303Magnetometer(*i2c, *irq, motionSpace, LSM303_M_DEFAULT_ADDR);
         mag->setAccelerometer(*acc);
         DMESG("mbhw: LSM303 found");
     } else {
@@ -377,9 +448,9 @@ static LevelDetectorSPL *getSound() {
 }
 
 // ---------------------------------------------------------------------------------------------
-// LED matrix (also the light sensor)
+// LED matrix (also the light sensor). MicroBitDisplay = NRF52LEDMatrix + text/image animation.
 // ---------------------------------------------------------------------------------------------
-static NRF52LEDMatrix *ledMatrix;
+static MicroBitDisplay *ledMatrix;
 static const MatrixPoint ledMatrixPositions[5 * 5] = {
     {0, 0}, {0, 1}, {0, 2}, {0, 3}, {0, 4}, {1, 0}, {1, 1}, {1, 2}, {1, 3},
     {1, 4}, {2, 0}, {2, 1}, {2, 2}, {2, 3}, {2, 4}, {3, 0}, {3, 1}, {3, 2},
@@ -388,7 +459,7 @@ static Pin *ledRowPins[5];
 static Pin *ledColPins[5];
 static MatrixMap *ledMap;
 
-static NRF52LEDMatrix *getLeds() {
+static MicroBitDisplay *getLeds() {
     if (!ledMatrix) {
         // TIMER4 is not part of the pool pxt::allocateTimer() hands out, so it is free.
         if (NRF_TIMER4->INTENSET) {
@@ -415,10 +486,25 @@ static NRF52LEDMatrix *getLeds() {
         ledMap = new MatrixMap{5, 5, 5, 5, ledRowPins, ledColPins, ledMatrixPositions};
         auto t = new NRFLowLevelTimer(NRF_TIMER4, TIMER4_IRQn);
         NVIC_SetPriority(TIMER4_IRQn, 3); // as in MicroBit.cpp
-        ledMatrix = new NRF52LEDMatrix(*t, *ledMap, MBHW_ID_LEDMATRIX,
-                                       DisplayMode::DISPLAY_MODE_GREYSCALE);
+        ledMatrix = new MicroBitDisplay(*t, *ledMap, MBHW_ID_LEDMATRIX); // greyscale mode
     }
     return ledMatrix;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Data logging (MY_DATA.HTM on the MICROBIT drive) - see microbit-log.cpp
+// ---------------------------------------------------------------------------------------------
+static void ensureLog() {
+    static bool started;
+    if (!started) {
+        started = true;
+        // The power manager only uses its timer for deep sleep, which this extension never
+        // requests. Lend it the ADC's timer rather than using up another hardware timer.
+        ensureADC();
+        if (!adcTimer) // the ADC isn't ours: fall back to a timer of our own
+            adcTimer = (NRFLowLevelTimer *)pxt::allocateTimer();
+        mbhwlog::init(*internalI2C(), *adcTimer, *pxt::getPin(P0_6), *pxt::getPin(P1_8));
+    }
 }
 
 #endif // MBHW_NATIVE
@@ -945,6 +1031,159 @@ int lightLevel() {
     return m ? m->readLightLevel() : 0;
 #else
     return 127;
+#endif
+}
+
+
+// ---------------------------------------------------------------------------------- orientation
+
+/** How the micro:bit sits in the shield. logo: 0=up 1=right 2=down 3=left (as seen by the
+ *  player); away: true if the micro:bit's LEDs face away from the player. */
+//%
+void setOrientation(int logo, bool away) {
+#if MBHW_NATIVE
+    orientLogo = logo & 3;
+    orientAway = away;
+    applyOrientation();
+#endif
+}
+
+// ---------------------------------------------------------------------------------- LED text
+
+#if MBHW_NATIVE
+static ManagedString toManaged(String s) {
+    if (!s)
+        return ManagedString("");
+    return ManagedString(s->getUTF8Data(), (int16_t)s->getUTF8Size());
+}
+#endif
+
+/** Scrolls text across the LEDs; interval = ms per column. Blocks unless background is true. */
+//%
+void ledScroll(String text, int interval, bool background) {
+#if MBHW_NATIVE
+    auto d = getLeds();
+    if (!d)
+        return;
+    if (interval <= 0)
+        interval = DISPLAY_DEFAULT_SCROLL_SPEED;
+    d->stopAnimation();
+    if (background)
+        d->scrollAsync(toManaged(text), interval);
+    else
+        d->scroll(toManaged(text), interval);
+#endif
+}
+
+/** Shows one character (or each character in turn, `interval` ms apart) without scrolling. */
+//%
+void ledPrint(String text, int interval, bool background) {
+#if MBHW_NATIVE
+    auto d = getLeds();
+    if (!d)
+        return;
+    if (interval <= 0)
+        interval = DISPLAY_DEFAULT_PRINT_SPEED;
+    d->stopAnimation();
+    if (background)
+        d->printAsync(toManaged(text), interval);
+    else
+        d->print(toManaged(text), interval);
+#endif
+}
+
+/** Stops any text animation on the LEDs. */
+//%
+void ledStopAnimation() {
+#if MBHW_NATIVE
+    if (ledMatrix)
+        ledMatrix->stopAnimation();
+#endif
+}
+
+// ---------------------------------------------------------------------------------- data log
+
+/** Starts a new row in the data log. */
+//%
+int logBeginRow() {
+#if MBHW_NATIVE
+    ensureLog();
+    return mbhwlog::beginRow();
+#else
+    return 0;
+#endif
+}
+
+/** Adds a column/value pair to the current row. */
+//%
+int logData(String key, String value) {
+#if MBHW_NATIVE
+    if (!key || !value)
+        return DEVICE_INVALID_PARAMETER;
+    ensureLog();
+    return mbhwlog::logData(key->getUTF8Data(), key->getUTF8Size(), value->getUTF8Data(),
+                            value->getUTF8Size());
+#else
+    return 0;
+#endif
+}
+
+/** Writes the current row to the log. */
+//%
+int logEndRow() {
+#if MBHW_NATIVE
+    ensureLog();
+    return mbhwlog::endRow();
+#else
+    return 0;
+#endif
+}
+
+/** Deletes the log. fullErase also erases the flash (slow). */
+//%
+void logClear(bool fullErase) {
+#if MBHW_NATIVE
+    ensureLog();
+    mbhwlog::clear(fullErase);
+#endif
+}
+
+/** Time stamp column: 0=none, 1=ms, 10=s, 600=min, 36000=h, 864000=days. */
+//%
+void logSetTimeStamp(int format) {
+#if MBHW_NATIVE
+    ensureLog();
+    mbhwlog::setTimeStamp(format);
+#endif
+}
+
+/** Also send each logged row to the USB serial port. */
+//%
+void logSetSerialMirroring(bool on) {
+#if MBHW_NATIVE
+    ensureLog();
+    mbhwlog::setSerialMirroring(on);
+#endif
+}
+
+/** True when the log has no room for more data. */
+//%
+bool logIsFull() {
+#if MBHW_NATIVE
+    ensureLog();
+    return mbhwlog::isFull();
+#else
+    return false;
+#endif
+}
+
+/** Event source id for "log full" events (value 1). */
+//%
+int logEventSource() {
+#if MBHW_NATIVE
+    return mbhwlog::eventSource();
+#else
+    return 0;
 #endif
 }
 

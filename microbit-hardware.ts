@@ -1,4 +1,4 @@
-// Blocks for the micro:bit V2's on-board hardware when it runs MakeCode Arcade
+// arcade-microbit-hardware: blocks for the micro:bit V2's on-board hardware when it runs MakeCode Arcade
 // (micro:bit Arcade shields and kits: hardware variants hw---n3 and hw---gdk).
 //
 // Each block calls a C++ function from microbit-hw.cpp on the device. The TypeScript bodies of the
@@ -178,12 +178,82 @@ enum MicrobitPinEvent {
     PulseLow = 5
 }
 
+enum MicrobitLogoDirection {
+    //% block="up"
+    Up = 0,
+    //% block="right"
+    Right = 1,
+    //% block="down"
+    Down = 2,
+    //% block="left"
+    Left = 3
+}
+
+enum MicrobitLedFacing {
+    //% block="toward the player"
+    TowardPlayer = 0,
+    //% block="away from the player"
+    AwayFromPlayer = 1
+}
+
+enum MicrobitPlayMode {
+    //% block="until done"
+    UntilDone = 0,
+    //% block="in background"
+    InBackground = 1
+}
+
+enum MicrobitSoundExpression {
+    //% block="giggle"
+    Giggle,
+    //% block="happy"
+    Happy,
+    //% block="hello"
+    Hello,
+    //% block="mysterious"
+    Mysterious,
+    //% block="sad"
+    Sad,
+    //% block="slide"
+    Slide,
+    //% block="soaring"
+    Soaring,
+    //% block="spring"
+    Spring,
+    //% block="twinkle"
+    Twinkle,
+    //% block="yawn"
+    Yawn
+}
+
+enum MicrobitLogTimestamp {
+    //% block="none"
+    None = 0,
+    //% block="milliseconds"
+    Milliseconds = 1,
+    //% block="seconds"
+    Seconds = 10,
+    //% block="minutes"
+    Minutes = 600,
+    //% block="hours"
+    Hours = 36000,
+    //% block="days"
+    Days = 864000
+}
+
+enum MicrobitLogDelete {
+    //% block="fast"
+    Fast = 0,
+    //% block="full"
+    Full = 1
+}
+
 /**
  * Use the micro:bit V2's own sensors, buttons and pins in MakeCode Arcade.
  */
-//% color="#D400D4" weight=90 icon="" block="micro:bit"
-//% groups='["Buttons", "Touch", "Motion", "Compass", "Environment", "Sound", "Pins", "LED matrix", "Other"]'
-namespace microbit {
+//% color="#D400D4" weight=90 icon="\uf2db" block="micro:bit"
+//% groups='["Buttons", "Touch", "Motion", "Compass", "Environment", "Microphone", "Sound", "LED matrix", "Pins", "Data logging", "Other"]'
+namespace microbit_hardware {
 
     // =========================================================================================
     // Native functions (microbit-hw.cpp). Bodies run only in the simulator.
@@ -265,6 +335,30 @@ namespace microbit {
     function _ledEnable(on: boolean): void { }
     //% shim=mbhw::lightLevel
     function _lightLevel(): number { return 127 }
+    //% shim=mbhw::setOrientation
+    function _setOrientation(logo: number, away: boolean): void { }
+    //% shim=mbhw::ledScroll
+    function _ledScroll(text: string, interval: number, background: boolean): void { }
+    //% shim=mbhw::ledPrint
+    function _ledPrint(text: string, interval: number, background: boolean): void { }
+    //% shim=mbhw::ledStopAnimation
+    function _ledStopAnimation(): void { }
+    //% shim=mbhw::logBeginRow
+    function _logBeginRow(): number { return 0 }
+    //% shim=mbhw::logData
+    function _logData(key: string, value: string): number { return 0 }
+    //% shim=mbhw::logEndRow
+    function _logEndRow(): number { return 0 }
+    //% shim=mbhw::logClear
+    function _logClear(fullErase: boolean): void { }
+    //% shim=mbhw::logSetTimeStamp
+    function _logSetTimeStamp(format: number): void { }
+    //% shim=mbhw::logSetSerialMirroring
+    function _logSetSerialMirroring(on: boolean): void { }
+    //% shim=mbhw::logIsFull
+    function _logIsFull(): boolean { return false }
+    //% shim=mbhw::logEventSource
+    function _logEventSource(): number { return 0 }
 
     // =========================================================================================
     // Buttons
@@ -336,8 +430,20 @@ namespace microbit {
     // =========================================================================================
 
     /**
+     * Tell the extension how the micro:bit sits in your Arcade shield, so that motion, gestures
+     * and the compass are measured relative to the screen. Look at the screen and note which way
+     * the micro:bit's logo (the end opposite the gold pins) points, and whether its LEDs face you.
+     * Most shields hold the micro:bit "logo up, toward the player", which is the default.
+     */
+    //% blockId=mbhw_orientation block="set micro:bit orientation: logo points $logo LEDs face $facing"
+    //% group="Motion" weight=85
+    export function setOrientation(logo: MicrobitLogoDirection, facing: MicrobitLedFacing): void {
+        _setOrientation(logo, facing == MicrobitLedFacing.AwayFromPlayer)
+    }
+
+    /**
      * Acceleration in milli-g (1000 = 1g) along an axis of the micro:bit, or the total strength.
-     * Axes are relative to the micro:bit board, not to the Arcade screen.
+     * Axes follow the micro:bit board unless "set micro:bit orientation" says how it sits in the shield.
      */
     //% blockId=mbhw_acceleration block="micro:bit acceleration (mg) $dimension"
     //% group="Motion" weight=80
@@ -517,7 +623,7 @@ namespace microbit {
     }
 
     // =========================================================================================
-    // Sound (microphone)
+    // Microphone
     // =========================================================================================
 
     /**
@@ -525,7 +631,7 @@ namespace microbit {
      * The microphone LED next to the logo lights up while the microphone is on.
      */
     //% blockId=mbhw_sound_level block="micro:bit sound level"
-    //% group="Sound" weight=30
+    //% group="Microphone" weight=30
     export function soundLevel(): number {
         return _soundLevel()
     }
@@ -534,7 +640,7 @@ namespace microbit {
      * Run code when the microphone hears a loud sound, or when it goes quiet.
      */
     //% blockId=mbhw_on_sound block="on micro:bit $sound sound"
-    //% group="Sound" weight=29
+    //% group="Microphone" weight=29
     export function onSound(sound: MicrobitSound, handler: () => void): void {
         control.onEvent(_soundSource(), sound, handler)
     }
@@ -544,7 +650,7 @@ namespace microbit {
      */
     //% blockId=mbhw_sound_threshold block="set micro:bit $sound sound threshold to $threshold"
     //% threshold.min=0 threshold.max=255 threshold.defl=128
-    //% group="Sound" weight=28 advanced=true
+    //% group="Microphone" weight=28 advanced=true
     export function setSoundThreshold(sound: MicrobitSound, threshold: number): void {
         _setSoundThreshold(sound, threshold)
     }
@@ -666,6 +772,40 @@ namespace microbit {
     // =========================================================================================
 
     /**
+     * Show text on the 5x5 LEDs: one character is shown still, longer text scrolls.
+     * "until done" waits for the text to finish; "in background" lets the game carry on.
+     * @param interval milliseconds per scroll step, eg: 150
+     */
+    //% blockId=mbhw_led_show_string block="micro:bit show string $text $mode||interval (ms) $interval"
+    //% text.defl="Hello!" interval.defl=150
+    //% group="LED matrix" weight=12
+    export function showString(text: string, mode: MicrobitPlayMode = MicrobitPlayMode.UntilDone, interval: number = 150): void {
+        const background = mode == MicrobitPlayMode.InBackground
+        if (!text) text = ""
+        if (text.length <= 1) _ledPrint(text, 0, background)
+        else _ledScroll(text, interval, background)
+    }
+
+    /**
+     * Show a number on the 5x5 LEDs (scrolls if it has more than one digit).
+     */
+    //% blockId=mbhw_led_show_number block="micro:bit show number $value $mode||interval (ms) $interval"
+    //% interval.defl=150
+    //% group="LED matrix" weight=11
+    export function showNumber(value: number, mode: MicrobitPlayMode = MicrobitPlayMode.UntilDone, interval: number = 150): void {
+        showString("" + value, mode, interval)
+    }
+
+    /**
+     * Stop text that is scrolling on the 5x5 LEDs.
+     */
+    //% blockId=mbhw_led_stop block="micro:bit stop LED animation"
+    //% group="LED matrix" weight=3 advanced=true
+    export function stopAnimation(): void {
+        _ledStopAnimation()
+    }
+
+    /**
      * Turn on an LED of the micro:bit's 5x5 LED matrix.
      * The LED matrix uses pins P3, P4, P6, P7 and P10; don't use it if your shield needs them.
      */
@@ -733,6 +873,241 @@ namespace microbit {
     //% group="LED matrix" weight=4 advanced=true
     export function setLedMatrixEnabled(on: boolean): void {
         _ledEnable(on)
+    }
+
+    // =========================================================================================
+    // Sound expressions (played through Arcade's own sound system, so they also work in the
+    // simulator and mix with game music)
+    // =========================================================================================
+
+    // The micro:bit's built-in sound expressions, copied from codal-microbit-v2
+    // (SoundExpressions.cpp). Each comma-separated 72-digit frame is one sound effect.
+    const EXPRESSIONS = [
+        "010230988019008440044008881023001601003300240000000000000000000000000000,110232570087411440044008880352005901003300010000000000000000010000000000,310232729021105440288908880091006300000000240700020000000000003000000000,310232729010205440288908880091006300000000240700020000000000003000000000,310232729011405440288908880091006300000000240700020000000000003000000000",
+        "010231992066911440044008880262002800001800020500000000000000010000000000,002322129029508440240408880000000400022400110000000000000000007500000000,000002129029509440240408880145000400022400110000000000000000007500000000",
+        "310230673019702440118708881023012800000000240000000000000000000000000000,300001064001602440098108880000012800000100040000000000000000000000000000,310231064029302440098108881023012800000100040000000000000000000000000000",
+        "400002390033100440240408880477000400022400110400000000000000008000000000,405512845385000440044008880000012803010500160000000000000000085000500015",
+        "310232226070801440162408881023012800000100240000000000000000000000000000,310231623093602440093908880000012800000100240000000000000000000000000000",
+        "105202325022302440240408881023012801020000110400000000000000010000000000,010232520091002440044008881023012801022400110400000000000000010000000000",
+        "210234009530905440599908881023002202000400020250000000000000020000000000,402233727273014440044008880000003101024400030000000000000000000000000000",
+        "306590037116312440058708880807003400000000240000000000000000050000000000,010230037116313440058708881023003100000000240000000000000000050000000000",
+        "010180007672209440075608880855012800000000240000000000000000000000000000",
+        "200002281133202440150008881023012801024100240400030000000000010000000000,005312520091002440044008880636012801022400110300000000000000010000000000,008220784019008440044008880681001600005500240000000000000000005000000000,004790784019008440044008880298001600000000240000000000000000005000000000,003210784019008440044008880108001600003300080000000000000000005000000000"
+    ]
+
+    // semitone offsets of the scales used by the micro:bit's arpeggio frames
+    const SCALES = [
+        [0, 2, 4, 5, 7, 9, 11],              // major
+        [0, 2, 3, 5, 7, 8, 10],              // minor
+        [0, 3, 6, 9],                        // diminished
+        [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], // chromatic
+        [0, 2, 4, 6, 8, 10]                  // whole tone
+    ]
+
+    function digits(frame: string, offset: number, length: number): number {
+        return parseInt(frame.substr(offset, length)) || 0
+    }
+
+    function randomize(value: number, range: number): number {
+        if (range <= 0) return value
+        return Math.abs(value + Math.randomRange(-range, range))
+    }
+
+    function playFrame(frame: string): void {
+        if (frame.length < 72) return
+        const wave = digits(frame, 0, 1)
+        const shape = digits(frame, 13, 2)
+        const steps = Math.max(1, digits(frame, 30, 4))
+        const fx = digits(frame, 34, 2)
+        const freq = randomize(digits(frame, 5, 4), digits(frame, 44, 4))
+        const endFreq = randomize(digits(frame, 18, 4), digits(frame, 48, 4))
+        const startVol = Math.clamp(0, 1023, randomize(digits(frame, 1, 4), digits(frame, 52, 4))) >> 2
+        const endVol = Math.clamp(0, 1023, randomize(digits(frame, 26, 4), digits(frame, 56, 4))) >> 2
+        const duration = randomize(digits(frame, 9, 4), digits(frame, 60, 4))
+        if (duration <= 0) return
+        const waveShape = <WaveShape>Math.clamp(0, 4, wave)
+
+        if (shape >= 8 && shape <= 17) {
+            // arpeggio: `steps` notes from a scale, rising (even shapes) or falling (odd shapes)
+            const scale = SCALES[(shape - 8) >> 1]
+            const noteTime = Math.max(1, Math.idiv(duration, steps))
+            for (let i = 0; i < steps; i++) {
+                const step = (shape % 2 == 0) ? i : steps - 1 - i
+                const semis = scale[step % scale.length] + 12 * Math.idiv(step, scale.length)
+                const f = Math.round(freq * Math.pow(2, semis / 12))
+                const v1 = startVol + Math.idiv((endVol - startVol) * i, steps)
+                const v2 = startVol + Math.idiv((endVol - startVol) * (i + 1), steps)
+                music.createSoundEffect(waveShape, f, f, v1, v2, noteTime,
+                    SoundExpressionEffect.None, InterpolationCurve.Linear).play(music.PlaybackMode.UntilDone)
+            }
+            return
+        }
+
+        let interpolation = InterpolationCurve.Linear
+        if (shape == 2 || shape == 5 || shape == 6) interpolation = InterpolationCurve.Curve
+        else if (shape == 18) interpolation = InterpolationCurve.Logarithmic
+        let effect = SoundExpressionEffect.None
+        if (fx == 1) effect = SoundExpressionEffect.Vibrato
+        else if (fx == 2) effect = SoundExpressionEffect.Tremolo
+        else if (fx == 3) effect = SoundExpressionEffect.Warble
+        music.createSoundEffect(waveShape, freq, shape == 0 ? freq : endFreq, startVol, endVol,
+            duration, effect, interpolation).play(music.PlaybackMode.UntilDone)
+    }
+
+    function playFrames(data: string): void {
+        for (const frame of data.split(","))
+            playFrame(frame)
+    }
+
+    /**
+     * Play one of the micro:bit's built-in sound expressions (giggle, happy, hello, ...).
+     * They play through Arcade's sound output: the micro:bit speaker and/or the shield's speaker.
+     */
+    //% blockId=mbhw_play_expression block="micro:bit play sound $expression $mode"
+    //% group="Sound" weight=26
+    export function playSoundExpression(expression: MicrobitSoundExpression, mode: MicrobitPlayMode = MicrobitPlayMode.UntilDone): void {
+        const data = EXPRESSIONS[expression]
+        if (!data) return
+        if (mode == MicrobitPlayMode.InBackground)
+            control.runInParallel(() => playFrames(data))
+        else
+            playFrames(data)
+    }
+
+    // =========================================================================================
+    // Data logging (MY_DATA.HTM on the MICROBIT drive, like MakeCode for micro:bit's data logger)
+    // =========================================================================================
+
+    /** A column name and the value to log in it. */
+    export class ColumnValue {
+        public value: string
+        constructor(public column: string, value: any) {
+            this.value = "" + value
+        }
+    }
+
+    let logInitialized = false
+    let logDisabled = false
+    let logFullHandler: () => void = undefined
+
+    function initLog(): void {
+        if (logInitialized) return
+        logInitialized = true
+        if (!_isMicrobit()) return
+        _logSetTimeStamp(MicrobitLogTimestamp.Seconds) // same default as MakeCode for micro:bit
+        control.onEvent(_logEventSource(), 1 /* MICROBIT_LOG_EVT_LOG_FULL */, () => {
+            logDisabled = true
+            if (logFullHandler) logFullHandler()
+        })
+    }
+
+    function logRow(data: ColumnValue[]): void {
+        if (!data || !data.length) return
+        initLog()
+        if (logDisabled) return
+        if (!_isMicrobit()) {
+            // simulator: show the row in the console instead
+            console.log(data.map(cv => cv.column + "=" + cv.value).join(", "))
+            return
+        }
+        _logBeginRow()
+        for (const cv of data)
+            _logData(cv.column, cv.value)
+        _logEndRow()
+    }
+
+    /**
+     * A column and the value to store in it.
+     */
+    //% blockId=mbhw_create_cv block="column $column value $value"
+    //% column.defl="x" value.shadow=math_number
+    //% group="Data logging" weight=9 blockGap=8
+    export function createCV(column: string, value: any): ColumnValue {
+        return new ColumnValue(column, value)
+    }
+
+    /**
+     * Add a row of data to the micro:bit's data log. Open MY_DATA.HTM on the MICROBIT drive to
+     * see, chart or download it.
+     */
+    //% blockId=mbhw_log_data block="micro:bit log data $data1||$data2 $data3 $data4 $data5 $data6"
+    //% data1.shadow=mbhw_create_cv data2.shadow=mbhw_create_cv data3.shadow=mbhw_create_cv
+    //% data4.shadow=mbhw_create_cv data5.shadow=mbhw_create_cv data6.shadow=mbhw_create_cv
+    //% inlineInputMode="variable" inlineInputModeLimit=1 expandableArgumentMode="enabled"
+    //% group="Data logging" weight=10
+    export function logData(data1: ColumnValue, data2?: ColumnValue, data3?: ColumnValue,
+        data4?: ColumnValue, data5?: ColumnValue, data6?: ColumnValue): void {
+        logRow([data1, data2, data3, data4, data5, data6].filter(cv => !!cv))
+    }
+
+    /**
+     * Log a row from an array of column/value pairs.
+     */
+    export function logDataArray(data: ColumnValue[]): void {
+        logRow(data)
+    }
+
+    /**
+     * Set the column names of the data log (optional; columns are also added as data is logged).
+     */
+    //% blockId=mbhw_log_columns block="micro:bit set log columns $col1||$col2 $col3 $col4 $col5 $col6"
+    //% col1.defl="x" inlineInputMode="variable" inlineInputModeLimit=1 expandableArgumentMode="enabled"
+    //% group="Data logging" weight=8
+    export function setColumnTitles(col1: string, col2?: string, col3?: string, col4?: string,
+        col5?: string, col6?: string): void {
+        logRow([col1, col2, col3, col4, col5, col6].filter(c => !!c).map(c => new ColumnValue(c, "")))
+    }
+
+    /**
+     * Choose the unit of the time column added to each row, or turn it off.
+     */
+    //% blockId=mbhw_log_timestamp block="micro:bit log time stamp $format"
+    //% group="Data logging" weight=7
+    export function includeTimestamp(format: MicrobitLogTimestamp): void {
+        initLog()
+        _logSetTimeStamp(format)
+    }
+
+    /**
+     * Run code when the data log is full. Nothing more is logged until the log is deleted.
+     */
+    //% blockId=mbhw_log_full block="on micro:bit log full"
+    //% group="Data logging" weight=6
+    export function onLogFull(handler: () => void): void {
+        initLog()
+        logFullHandler = handler
+    }
+
+    /**
+     * Delete the data log. "fast" only marks it as deleted; "full" also erases the storage (slower).
+     */
+    //% blockId=mbhw_log_delete block="micro:bit delete log $mode"
+    //% group="Data logging" weight=5
+    export function deleteLog(mode: MicrobitLogDelete = MicrobitLogDelete.Fast): void {
+        initLog()
+        _logClear(mode == MicrobitLogDelete.Full)
+        logDisabled = false
+    }
+
+    /**
+     * Also send each logged row to the micro:bit's USB serial port.
+     */
+    //% blockId=mbhw_log_mirror block="micro:bit mirror log to serial $on"
+    //% on.shadow="toggleOnOff"
+    //% group="Data logging" weight=4 advanced=true
+    export function mirrorToSerial(on: boolean): void {
+        initLog()
+        _logSetSerialMirroring(on)
+    }
+
+    /**
+     * Is the data log full?
+     */
+    //% blockId=mbhw_log_is_full block="micro:bit log is full"
+    //% group="Data logging" weight=3 advanced=true
+    export function logIsFull(): boolean {
+        initLog()
+        return logDisabled || _logIsFull()
     }
 
     // =========================================================================================

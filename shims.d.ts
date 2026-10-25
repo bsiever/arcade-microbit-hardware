@@ -156,6 +156,55 @@ declare namespace mbhw {
     /** Light level 0..255 measured with the LED matrix. Starts the LED matrix driver. */
     //% shim=mbhw::lightLevel
     function lightLevel(): int32;
+
+    /** How the micro:bit sits in the shield. logo: 0=up 1=right 2=down 3=left (as seen by the
+     *  player); away: true if the micro:bit's LEDs face away from the player. */
+    //% shim=mbhw::setOrientation
+    function setOrientation(logo: int32, away: boolean): void;
+
+    /** Scrolls text across the LEDs; interval = ms per column. Blocks unless background is true. */
+    //% shim=mbhw::ledScroll
+    function ledScroll(text: string, interval: int32, background: boolean): void;
+
+    /** Shows one character (or each character in turn, `interval` ms apart) without scrolling. */
+    //% shim=mbhw::ledPrint
+    function ledPrint(text: string, interval: int32, background: boolean): void;
+
+    /** Stops any text animation on the LEDs. */
+    //% shim=mbhw::ledStopAnimation
+    function ledStopAnimation(): void;
+
+    /** Starts a new row in the data log. */
+    //% shim=mbhw::logBeginRow
+    function logBeginRow(): int32;
+
+    /** Adds a column/value pair to the current row. */
+    //% shim=mbhw::logData
+    function logData(key: string, value: string): int32;
+
+    /** Writes the current row to the log. */
+    //% shim=mbhw::logEndRow
+    function logEndRow(): int32;
+
+    /** Deletes the log. fullErase also erases the flash (slow). */
+    //% shim=mbhw::logClear
+    function logClear(fullErase: boolean): void;
+
+    /** Time stamp column: 0=none, 1=ms, 10=s, 600=min, 36000=h, 864000=days. */
+    //% shim=mbhw::logSetTimeStamp
+    function logSetTimeStamp(format: int32): void;
+
+    /** Also send each logged row to the USB serial port. */
+    //% shim=mbhw::logSetSerialMirroring
+    function logSetSerialMirroring(on: boolean): void;
+
+    /** True when the log has no room for more data. */
+    //% shim=mbhw::logIsFull
+    function logIsFull(): boolean;
+
+    /** Event source id for "log full" events (value 1). */
+    //% shim=mbhw::logEventSource
+    function logEventSource(): int32;
 }
 
 // Auto-generated. Do not edit. Really.

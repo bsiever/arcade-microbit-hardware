@@ -1,6 +1,6 @@
 # micro:bit hardware for MakeCode Arcade
 
-Use the micro:bit V2's own hardware in MakeCode Arcade games when the micro:bit is plugged into an Arcade shield or kit: buttons A/B, the touch logo, accelerometer and gestures, compass, temperature, light and sound sensors, the 5×5 LEDs and the edge-connector pins.
+Use the micro:bit V2's own hardware in MakeCode Arcade games when the micro:bit is plugged into an Arcade shield or kit: buttons A/B, the touch logo, accelerometer and gestures, compass, temperature, light and sound sensors, the 5×5 LEDs (including scrolling text), the micro:bit's sound expressions, data logging and the edge-connector pins.
 
 Arcade normally can't reach any of these: it runs on the micro:bit without starting the micro:bit's own drivers. This extension starts each driver the first time a block needs it. See [ANALYSIS.md](ANALYSIS.md) for the details.
 
@@ -15,57 +15,81 @@ When you download, choose a micro:bit Arcade shield (the "N3" / micro:bit hardwa
 
 ## Blocks
 
+All blocks are in the `microbit_hardware` namespace.
+
 ### Buttons and touch
 ```typescript
-microbit.onButton(MicrobitButton.A, MicrobitButtonEvent.Click, function () { })
-microbit.buttonIsPressed(MicrobitButton.AB)
-microbit.onTouch(MicrobitTouchPin.Logo, MicrobitTouchEvent.Pressed, function () { })
-microbit.isTouched(MicrobitTouchPin.P0)
-microbit.setTouchMode(MicrobitTouchPin.P1, MicrobitTouchMode.Capacitive)
+microbit_hardware.onButton(MicrobitButton.A, MicrobitButtonEvent.Click, function () { })
+microbit_hardware.buttonIsPressed(MicrobitButton.AB)
+microbit_hardware.onTouch(MicrobitTouchPin.Logo, MicrobitTouchEvent.Pressed, function () { })
+microbit_hardware.isTouched(MicrobitTouchPin.P0)
+microbit_hardware.setTouchMode(MicrobitTouchPin.P1, MicrobitTouchMode.Capacitive)
 ```
 These are the buttons on the micro:bit itself, not the Arcade controller buttons. The logo uses capacitive touch; pins P0–P2 default to resistive touch (hold GND with your other hand).
 
 ### Motion and compass
 ```typescript
-microbit.acceleration(MicrobitDimension.X)        // milli-g
-microbit.rotation(MicrobitRotation.Pitch)         // degrees
-microbit.onGesture(MicrobitGesture.Shake, function () { })
-microbit.isGesture(MicrobitGesture.ScreenUp)
-microbit.compassHeading()                         // degrees, 0 = north
-microbit.magneticForce(MicrobitDimension.Strength) // µT
-microbit.calibrateCompass()
+microbit_hardware.setOrientation(MicrobitLogoDirection.Up, MicrobitLedFacing.TowardPlayer)
+microbit_hardware.acceleration(MicrobitDimension.X)         // milli-g
+microbit_hardware.rotation(MicrobitRotation.Pitch)          // degrees
+microbit_hardware.onGesture(MicrobitGesture.Shake, function () { })
+microbit_hardware.isGesture(MicrobitGesture.ScreenUp)
+microbit_hardware.compassHeading()                          // degrees, 0 = north
+microbit_hardware.magneticForce(MicrobitDimension.Strength) // µT
+microbit_hardware.calibrateCompass()
 ```
-Axes are those of the micro:bit board, as in MakeCode for micro:bit; depending on how your shield holds the micro:bit they may not line up with the screen.
+**Orientation.** By default the axes are the micro:bit board's, as in MakeCode for micro:bit. If your shield holds the micro:bit turned or facing backwards, use **set micro:bit orientation**: look at the screen, note which way the micro:bit's logo (the end opposite the gold pins) points and whether its LEDs face you. After that, x/y/z, pitch/roll, gestures ("logo up" then means "top of the screen up") and the compass heading are all relative to the screen. Most shields hold the micro:bit logo up, facing the player, which is the default.
 
-The first compass reading starts calibration: a 5×5 grid appears on the Arcade screen; tilt the micro:bit until every square is filled. The calibration is saved on the micro:bit and reused next time; "clear micro:bit compass calibration" forgets it.
+**Compass.** The first compass reading starts calibration: a 5×5 grid appears on the Arcade screen; tilt the micro:bit until every square is filled. The calibration is saved on the micro:bit and reused next time; "clear micro:bit compass calibration" forgets it.
 
-### Environment and sound
+### Environment and microphone
 ```typescript
-microbit.temperature(MicrobitTemperatureUnit.Celsius)
-microbit.lightLevel()                    // 0-255, uses the LED matrix
-microbit.soundLevel()                    // 0-255
-microbit.onSound(MicrobitSound.Loud, function () { })
-microbit.setSoundThreshold(MicrobitSound.Loud, 128)
+microbit_hardware.temperature(MicrobitTemperatureUnit.Celsius)
+microbit_hardware.lightLevel()                    // 0-255, uses the LED matrix
+microbit_hardware.soundLevel()                    // 0-255
+microbit_hardware.onSound(MicrobitSound.Loud, function () { })
+microbit_hardware.setSoundThreshold(MicrobitSound.Loud, 128)
 ```
 The microphone LED next to the logo turns on once the microphone is used.
 
-### Pins
+### Sound expressions
 ```typescript
-microbit.digitalReadPin(MicrobitPin.P1)
-microbit.digitalWritePin(MicrobitPin.P2, 1)
-microbit.analogReadPin(MicrobitAnalogPin.P0)  // 0-1023
-microbit.analogWritePin(MicrobitPin.P1, 512)
-microbit.servoWritePin(MicrobitPin.P2, 90)
-microbit.onPinEvent(MicrobitPin.P1, MicrobitPinEvent.Rise, function () { })
-microbit.pinIsFree(MicrobitPin.P8)
+microbit_hardware.playSoundExpression(MicrobitSoundExpression.Giggle, MicrobitPlayMode.UntilDone)
 ```
+The micro:bit's giggle, happy, hello, mysterious, sad, slide, soaring, spring, twinkle and yawn. They are played by Arcade's own sound system (micro:bit speaker and/or shield speaker), so they also work in the simulator and respect Arcade's volume.
 
 ### 5×5 LEDs
 ```typescript
-microbit.plot(2, 2)
-microbit.plotBrightness(0, 0, 64)
-microbit.unplot(2, 2)
-microbit.clearLeds()
+microbit_hardware.showString("Hi!", MicrobitPlayMode.InBackground)
+microbit_hardware.showNumber(42, MicrobitPlayMode.UntilDone)
+microbit_hardware.plot(2, 2)
+microbit_hardware.plotBrightness(0, 0, 64)
+microbit_hardware.unplot(2, 2)
+microbit_hardware.clearLeds()
+```
+"until done" waits for the text to finish scrolling; "in background" lets the game keep running.
+
+### Data logging
+```typescript
+microbit_hardware.setColumnTitles("x", "y")
+microbit_hardware.logData(
+    microbit_hardware.createCV("x", microbit_hardware.acceleration(MicrobitDimension.X)),
+    microbit_hardware.createCV("y", microbit_hardware.acceleration(MicrobitDimension.Y)))
+microbit_hardware.includeTimestamp(MicrobitLogTimestamp.Seconds)
+microbit_hardware.onLogFull(function () { })
+microbit_hardware.deleteLog(MicrobitLogDelete.Fast)
+```
+Works like MakeCode for micro:bit's data logger: rows are stored on the micro:bit and appear in **MY_DATA.HTM** on the MICROBIT drive, where you can view, chart and download them. A time column (seconds) is added by default. In the simulator, logged rows are printed to the console instead.
+
+### Pins
+```typescript
+microbit_hardware.digitalReadPin(MicrobitPin.P1)
+microbit_hardware.digitalWritePin(MicrobitPin.P2, 1)
+microbit_hardware.analogReadPin(MicrobitAnalogPin.P0)  // 0-1023
+microbit_hardware.analogWritePin(MicrobitPin.P1, 512)
+microbit_hardware.servoWritePin(MicrobitPin.P2, 90)
+microbit_hardware.onPinEvent(MicrobitPin.P1, MicrobitPinEvent.Rise, function () { })
+microbit_hardware.pinIsFree(MicrobitPin.P8)
 ```
 
 ## Pins used by Arcade hardware
@@ -75,7 +99,7 @@ The pin blocks ignore pins that the Arcade hardware uses for its screen or butto
 | Hardware | Pins in use |
 |---|---|
 | micro:bit Arcade shields (N3) | P8, P13, P14, P15, P16, P19. Older shields with a button chip also use P9 and P20. P12 is used when a Jacdac adapter is attached. |
-| Game Designer's Kit | P1–P5, P8–P16. The LED matrix and light level are not available. |
+| Game Designer's Kit | P1–P5, P8–P16. The LED matrix, scrolling text and light level are not available. |
 
 The LED matrix (and light level) uses P3, P4, P6, P7 and P10. "micro:bit LED matrix off" frees them again.
 
@@ -83,11 +107,11 @@ This extension also fills in the missing pin definitions so Arcade's own **Pins*
 
 ## Simulator
 
-The Arcade simulator has no micro:bit, so in the browser the sensor blocks return neutral values (0, `false`, 21 °C, light 127) and micro:bit events never fire. Use **running on micro:bit** to tell the two apart.
+The Arcade simulator has no micro:bit, so in the browser the sensor blocks return neutral values (0, `false`, 21 °C, light 127) and micro:bit events never fire. Sound expressions play normally, and logged data goes to the console. Use **running on micro:bit** to tell the two apart.
 
 ## Supported hardware
 
-micro:bit V2 in any Arcade shield or the Game Designer's Kit. Games using the extension still build for other Arcade boards; there the blocks return the same neutral values as in the simulator. The Calliope mini 3 GameKit uses the same firmware as micro:bit shields but has a different motion sensor (motion and compass blocks return 0); its other features are untested.
+micro:bit V2 in any Arcade shield or the Game Designer's Kit. Games using the extension still build for other Arcade boards; there the blocks return the same neutral values as in the simulator.
 
 ## License
 

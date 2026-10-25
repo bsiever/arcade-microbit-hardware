@@ -3,6 +3,9 @@
 // every 250 ms); micro:bit events show up as speech bubbles. In the simulator values read 0/false.
 //   controller A: calibrate the compass (then the heading is shown)
 //   controller B: show a smiley on the 5x5 LEDs and read the light level
+//   controller up/down: scroll text / play a sound expression
+//   controller left/right: log a row of data / delete the log (see MY_DATA.HTM on the MICROBIT drive)
+//   micro:bit button A+B: cycle the shield orientation setting (logo up/right/down/left)
 
 let status = sprites.create(img`
     . . . . . . . .
@@ -20,50 +23,75 @@ function report(msg: string) {
     status.sayText(msg, 1000, false)
 }
 
-microbit.onButton(MicrobitButton.A, MicrobitButtonEvent.Click, () => report("A"))
-microbit.onButton(MicrobitButton.B, MicrobitButtonEvent.Click, () => report("B"))
-microbit.onButton(MicrobitButton.AB, MicrobitButtonEvent.Click, () => report("A+B"))
-microbit.onTouch(MicrobitTouchPin.Logo, MicrobitTouchEvent.Pressed, () => report("logo"))
-microbit.onGesture(MicrobitGesture.Shake, () => report("shake"))
-microbit.onGesture(MicrobitGesture.ScreenDown, () => report("face down"))
-microbit.onSound(MicrobitSound.Loud, () => report("loud!"))
-microbit.onPinEvent(MicrobitPin.P1, MicrobitPinEvent.Rise, () => report("P1 rise"))
+microbit_hardware.onButton(MicrobitButton.A, MicrobitButtonEvent.Click, () => report("A"))
+microbit_hardware.onButton(MicrobitButton.B, MicrobitButtonEvent.Click, () => report("B"))
+let logo = 0
+microbit_hardware.onButton(MicrobitButton.AB, MicrobitButtonEvent.Click, () => {
+    logo = (logo + 1) % 4
+    microbit_hardware.setOrientation(logo, MicrobitLedFacing.TowardPlayer)
+    report("logo dir " + logo)
+})
+microbit_hardware.onTouch(MicrobitTouchPin.Logo, MicrobitTouchEvent.Pressed, () => report("logo"))
+microbit_hardware.onGesture(MicrobitGesture.Shake, () => report("shake"))
+microbit_hardware.onGesture(MicrobitGesture.ScreenDown, () => report("face down"))
+microbit_hardware.onSound(MicrobitSound.Loud, () => report("loud!"))
+microbit_hardware.onPinEvent(MicrobitPin.P1, MicrobitPinEvent.Rise, () => report("P1 rise"))
 
 let calibrated = false
 controller.A.onEvent(ControllerButtonEvent.Pressed, function () {
-    microbit.calibrateCompass()
+    microbit_hardware.calibrateCompass()
     calibrated = true
 })
 
 controller.B.onEvent(ControllerButtonEvent.Pressed, function () {
-    microbit.clearLeds()
-    microbit.plot(1, 1)
-    microbit.plot(3, 1)
-    microbit.plot(0, 3)
-    microbit.plot(4, 3)
-    for (let x = 1; x <= 3; x++) microbit.plot(x, 4)
-    report("light " + microbit.lightLevel())
+    microbit_hardware.clearLeds()
+    microbit_hardware.plot(1, 1)
+    microbit_hardware.plot(3, 1)
+    microbit_hardware.plot(0, 3)
+    microbit_hardware.plot(4, 3)
+    for (let x = 1; x <= 3; x++) microbit_hardware.plot(x, 4)
+    report("light " + microbit_hardware.lightLevel())
 })
+
+controller.up.onEvent(ControllerButtonEvent.Pressed, function () {
+    microbit_hardware.showString("Arcade", MicrobitPlayMode.InBackground)
+})
+controller.down.onEvent(ControllerButtonEvent.Pressed, function () {
+    microbit_hardware.playSoundExpression(MicrobitSoundExpression.Giggle, MicrobitPlayMode.InBackground)
+})
+microbit_hardware.setColumnTitles("x", "y", "z")
+controller.right.onEvent(ControllerButtonEvent.Pressed, function () {
+    microbit_hardware.logData(
+        microbit_hardware.createCV("x", microbit_hardware.acceleration(MicrobitDimension.X)),
+        microbit_hardware.createCV("y", microbit_hardware.acceleration(MicrobitDimension.Y)),
+        microbit_hardware.createCV("z", microbit_hardware.acceleration(MicrobitDimension.Z)))
+    report("logged")
+})
+controller.left.onEvent(ControllerButtonEvent.Pressed, function () {
+    microbit_hardware.deleteLog(MicrobitLogDelete.Fast)
+    report("log deleted")
+})
+microbit_hardware.onLogFull(() => report("log full"))
 
 let lines: string[] = []
 game.onUpdateInterval(250, function () {
     lines = [
-        "on micro:bit: " + microbit.isRunningOnMicrobit(),
-        "acc " + microbit.acceleration(MicrobitDimension.X) + " " +
-        microbit.acceleration(MicrobitDimension.Y) + " " +
-        microbit.acceleration(MicrobitDimension.Z),
-        "pitch " + microbit.rotation(MicrobitRotation.Pitch) +
-        " roll " + microbit.rotation(MicrobitRotation.Roll),
-        "mag " + Math.round(microbit.magneticForce(MicrobitDimension.Strength)) + " uT" +
-        (calibrated ? "  hdg " + microbit.compassHeading() : ""),
-        "temp " + microbit.temperature(MicrobitTemperatureUnit.Celsius) + " C",
-        "sound " + microbit.soundLevel(),
-        "A " + microbit.buttonIsPressed(MicrobitButton.A) +
-        " B " + microbit.buttonIsPressed(MicrobitButton.B) +
-        " logo " + microbit.isTouched(MicrobitTouchPin.Logo),
-        "P0 analog " + microbit.analogReadPin(MicrobitAnalogPin.P0) +
-        " P1 " + microbit.digitalReadPin(MicrobitPin.P1),
-        "ctrl A: calibrate  B: light"
+        "on micro:bit: " + microbit_hardware.isRunningOnMicrobit(),
+        "acc " + microbit_hardware.acceleration(MicrobitDimension.X) + " " +
+        microbit_hardware.acceleration(MicrobitDimension.Y) + " " +
+        microbit_hardware.acceleration(MicrobitDimension.Z),
+        "pitch " + microbit_hardware.rotation(MicrobitRotation.Pitch) +
+        " roll " + microbit_hardware.rotation(MicrobitRotation.Roll),
+        "mag " + Math.round(microbit_hardware.magneticForce(MicrobitDimension.Strength)) + " uT" +
+        (calibrated ? "  hdg " + microbit_hardware.compassHeading() : ""),
+        "temp " + microbit_hardware.temperature(MicrobitTemperatureUnit.Celsius) + " C",
+        "sound " + microbit_hardware.soundLevel(),
+        "A " + microbit_hardware.buttonIsPressed(MicrobitButton.A) +
+        " B " + microbit_hardware.buttonIsPressed(MicrobitButton.B) +
+        " logo " + microbit_hardware.isTouched(MicrobitTouchPin.Logo),
+        "P0 analog " + microbit_hardware.analogReadPin(MicrobitAnalogPin.P0) +
+        " P1 " + microbit_hardware.digitalReadPin(MicrobitPin.P1),
+        "A:cal B:light ^:text v:sound >:log"
     ]
 })
 
