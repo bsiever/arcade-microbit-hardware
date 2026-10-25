@@ -1,0 +1,34 @@
+{
+    "name": "arcade-microbit-hardware",
+    "version": "0.1.0",
+    "description": "Blocks for the micro:bit V2's buttons, touch logo, accelerometer, compass, temperature, light and sound sensors, LED matrix and pins in MakeCode Arcade.",
+    "license": "MIT",
+    "dependencies": {
+        "device": "*"
+    },
+    "files": [
+        "README.md",
+        "microbit.ts",
+        "microbit-hw.cpp",
+        "shims.d.ts",
+        "config-n3.ts",
+        "config-gdk.ts"
+    ],
+    "fileDependencies": {
+        "config-n3.ts": "hw---n3",
+        "config-gdk.ts": "hw---gdk"
+    },
+    "testFiles": [
+        "test.ts"
+    ],
+    "public": true,
+    "targetVersions": {
+        "target": "4.2.1",
+        "targetId": "arcade"
+    },
+    "supportedTargets": [
+        "arcade"
+    ],
+    "preferredEditor": "tsprj",
+    "author": "Bill Siever"
+}
